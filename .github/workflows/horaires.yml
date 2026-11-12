@@ -1,0 +1,69 @@
+name: Horaires TER
+
+# Toutes les 15 minutes : horaires Gujan-Mestras <-> Bordeaux Saint-Jean (données ouvertes SNCF),
+# publiés sur la branche « donnees » pour le script Cloudflare.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths: ["relais_trains.py", ".github/workflows/horaires.yml"]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: horaires-ter
+  cancel-in-progress: false
+
+jobs:
+  relais:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer le lecteur du temps réel
+        run: pip install --quiet gtfs-realtime-bindings==3.0.0 tzdata
+
+      - name: Reprendre les fichiers du passage précédent
+        run: |
+          mkdir -p sortie
+          if git fetch --quiet --depth=1 origin donnees; then
+            git show FETCH_HEAD:horaires.json > sortie/horaires.json 2>/dev/null || rm -f sortie/horaires.json
+            git show FETCH_HEAD:trains.json > sortie/trains.json 2>/dev/null || rm -f sortie/trains.json
+          fi
+
+      - name: Calculer les horaires
+        run: python relais_trains.py sortie
+
+      - name: Publier sur la branche « donnees »
+        run: |
+          cd sortie
+          git init --quiet
+          git checkout --quiet -b donnees
+          git add trains.json horaires.json
+          git -c user.name="Relais horaires" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit --quiet -m "Horaires TER"
+          git push --quiet --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" donnees
+          {
+            echo "### Horaires TER publiés ✅"
+            echo ""
+            echo "Valeur de la variable Cloudflare **HORAIRES_TER** :"
+            echo ""
+            echo '```'
+            echo "https://raw.githubusercontent.com/${{ github.repository }}/donnees/trains.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # GitHub met en pause les tâches planifiées d'un dépôt public sans activité depuis 60 jours.
+      - name: Garder le relais actif
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --silent -X PUT "repos/${{ github.repository }}/actions/workflows/horaires.yml/enable" || true
