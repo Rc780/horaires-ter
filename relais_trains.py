@@ -227,7 +227,8 @@ def appliquer_temps_reel(trains, contenu=None):
         if not entite.HasField("trip_update"):
             continue
         maj = entite.trip_update
-        par_trip[maj.trip.trip_id] = maj
+        # Le même trip_id sert plusieurs jours : la date de circulation fait partie de la clé.
+        par_trip[(maj.trip.trip_id, maj.trip.start_date)] = maj
         if maj.trip.schedule_relationship == 1:  # ADDED
             ajouts.append(maj)
         numero = numero_train(maj.trip.trip_id)
@@ -253,7 +254,7 @@ def appliquer_temps_reel(trains, contenu=None):
         return reelle
 
     for train in trains:
-        maj = par_trip.get(train.get("trip")) or par_numero.get((train["numero"], train["date"]))
+        maj = par_trip.get((train.get("trip"), train["date"])) or par_numero.get((train["numero"], train["date"]))
         if not maj:
             continue
         de, vers = (MAISON, TRAVAIL) if train["sens"] == "aller" else (TRAVAIL, MAISON)
@@ -312,7 +313,7 @@ def tester_page_cles(url):
             "Accept-Language": "fr-FR,fr;q=0.9",
         })
     except Exception as erreur:
-        return False, type(erreur).__name__
+        return False, f"{type(erreur).__name__} ({getattr(erreur, 'reason', erreur)})"[:90]
     if statut != 200:
         return False, f"HTTP {statut}"
     if "/startup/api" not in urllib.parse.urlparse(finale).path:
