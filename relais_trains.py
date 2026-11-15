@@ -32,7 +32,7 @@ SITES_CLES = (
 )
 MAISON = "87582619"   # Gujan-Mestras (code UIC)
 TRAVAIL = "87581009"  # Bordeaux Saint-Jean (code UIC)
-JOURS = 10            # horaires gardés : hier + les 10 prochains jours
+JOURS = 17            # horaires gardés : hier + les 17 prochains jours (rappels du samedi pour ton frère)
 RELIRE_HEURES = 12    # horaires prévus relus au moins toutes les 12 h
 VERIFIER_SITE_MINUTES = 55
 PARIS = ZoneInfo("Europe/Paris")
@@ -141,7 +141,7 @@ def signature_gtfs():
 
 
 def extraire_horaires(signature):
-    """Trains directs Gujan <-> Saint-Jean, d'hier aux 10 prochains jours, d'après le GTFS."""
+    """Trains directs Gujan <-> Saint-Jean, d'hier aux JOURS prochains jours, d'après le GTFS."""
     archive = zipfile.ZipFile(io.BytesIO(telecharger(GTFS_URL, 300)))
 
     # 1. Passages aux deux gares (stop_times.txt est gros : on ne garde que nos gares).
@@ -208,6 +208,7 @@ def extraire_horaires(signature):
     return {
         "genere_le": iso(maintenant()),
         "signature": signature,
+        "jours": JOURS,
         "du": debut.strftime("%Y%m%d"),
         "au": fin.strftime("%Y%m%d"),
         "trains": trains,
@@ -362,7 +363,8 @@ def main():
     if not relire:
         genere = lire_iso(horaires.get("genere_le"))
         relire = (not genere or maintenant() - genere >= dt.timedelta(hours=RELIRE_HEURES)
-                  or (signature is not None and signature != horaires.get("signature")))
+                  or (signature is not None and signature != horaires.get("signature"))
+                  or horaires.get("jours") != JOURS)  # durée changée : on relit tout de suite
     if relire:
         try:
             horaires = extraire_horaires(signature)
